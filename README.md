@@ -166,7 +166,7 @@ dotnet user-secrets --project src/Kuryo.Api set "Jwt:SigningKey" "<at least 32 c
 
 ## Tests
 
-111 tests and a run against the whole stack: 56 .NET unit tests, 47 integration tests that run the real API against PostgreSQL with PostGIS in Testcontainers, 8 Vitest tests for the web app, and a 17-step Playwright walkthrough with five browsers, all in CI.
+112 tests and a run against the whole stack: 56 .NET unit tests, 47 integration tests that run the real API against PostgreSQL with PostGIS in Testcontainers, 9 Vitest tests for the web app, and a 17-step Playwright walkthrough with five browsers, all in CI.
 
 - **Teams and places:** roles from courier to owner, merchant staff tied to their shop, a courier carrying an order kept on the team, owners alone changing how offers work, outsiders unable to tell a company exists, and zones drawn, refused when their edges cross, and overlapping at the cheaper fee.
 - **Orders:** numbers without gaps under twelve requests at once, addresses outside every zone refused, merchants seeing only their own orders, one courier given two orders at once getting one, assignment, hand-back, pickup, delivery with the code, wrong codes counted and locked after five, and cancellations freeing the courier.

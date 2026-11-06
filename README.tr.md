@@ -166,7 +166,7 @@ dotnet user-secrets --project src/Kuryo.Api set "Jwt:SigningKey" "<en az 32 kara
 
 ## Testler
 
-111 test ve tüm yığına karşı bir çalıştırma: 56 .NET birim testi, gerçek API'yi Testcontainers'taki PostGIS'li PostgreSQL'e karşı çalıştıran 47 entegrasyon testi, web uygulaması için 8 Vitest testi ve beş tarayıcıyla 17 adımlık bir Playwright senaryosu; hepsi CI'da.
+112 test ve tüm yığına karşı bir çalıştırma: 56 .NET birim testi, gerçek API'yi Testcontainers'taki PostGIS'li PostgreSQL'e karşı çalıştıran 47 entegrasyon testi, web uygulaması için 9 Vitest testi ve beş tarayıcıyla 17 adımlık bir Playwright senaryosu; hepsi CI'da.
 
 - **Ekipler ve yerler:** kuryeden sahibe roller, kendi işletmesine bağlı işletme çalışanları, sipariş taşıyan kuryenin ekipten çıkarılamaması, tekliflerin işleyişini yalnızca sahiplerin değiştirmesi, dışarıdakilerin bir firmanın varlığını anlayamaması ve çizilen, kenarları kesişince reddedilen, çakıştığında ucuz ücreti uygulanan bölgeler.
 - **Siparişler:** aynı anda gelen on iki istekte boşluksuz numaralar, hiçbir bölgede olmayan adreslerin reddi, işletmelerin yalnızca kendi siparişlerini görmesi, aynı anda iki siparişe atanan kuryenin yalnızca birini alması, atama, geri verme, teslim alma, kodla teslim, sayılan ve beşte kilitlenen yanlış kodlar ve kuryeyi serbest bırakan iptaller.
