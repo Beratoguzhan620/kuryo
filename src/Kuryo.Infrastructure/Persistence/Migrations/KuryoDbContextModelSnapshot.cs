@@ -182,6 +182,52 @@ namespace Kuryo.Infrastructure.Persistence.Migrations
                     b.ToTable("couriers", (string)null);
                 });
 
+            modelBuilder.Entity("Kuryo.Core.Couriers.Position", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<Guid>("CourierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("courier_id");
+
+                    b.Property<Point>("Location")
+                        .IsRequired()
+                        .HasColumnType("geography (point, 4326)")
+                        .HasColumnName("location");
+
+                    b.Property<Guid?>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_positions");
+
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("ix_positions_company_id");
+
+                    b.HasIndex("CourierId", "At")
+                        .HasDatabaseName("ix_positions_courier_id_at");
+
+                    b.HasIndex("OrderId", "At")
+                        .HasDatabaseName("ix_positions_order_id_at")
+                        .HasFilter("order_id IS NOT NULL");
+
+                    b.ToTable("positions", (string)null);
+                });
+
             modelBuilder.Entity("Kuryo.Core.Merchants.Merchant", b =>
                 {
                     b.Property<Guid>("Id")
@@ -234,6 +280,74 @@ namespace Kuryo.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_merchants_company_id_name");
 
                     b.ToTable("merchants", (string)null);
+                });
+
+            modelBuilder.Entity("Kuryo.Core.Offers.Offer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<Guid>("CourierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("courier_id");
+
+                    b.Property<double>("DistanceKm")
+                        .HasColumnType("double precision")
+                        .HasColumnName("distance_km");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<DateTimeOffset>("OfferedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("offered_at");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<DateTimeOffset?>("RespondedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("responded_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("status");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_offers");
+
+                    b.HasIndex("CourierId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_offers_one_pending_per_courier")
+                        .HasFilter("status = 'Pending'");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_offers_one_pending_per_order")
+                        .HasFilter("status = 'Pending'");
+
+                    b.HasIndex("OrderId", "CourierId")
+                        .HasDatabaseName("ix_offers_order_id_courier_id");
+
+                    b.HasIndex("Status", "ExpiresAt")
+                        .HasDatabaseName("ix_offers_status_expires_at");
+
+                    b.ToTable("offers", (string)null);
                 });
 
             modelBuilder.Entity("Kuryo.Core.Orders.Order", b =>
@@ -360,6 +474,10 @@ namespace Kuryo.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("ReadyAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("ready_at");
+
+                    b.Property<DateTimeOffset>("SearchStartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("search_started_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -589,6 +707,16 @@ namespace Kuryo.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_couriers_memberships_company_id_user_id");
                 });
 
+            modelBuilder.Entity("Kuryo.Core.Couriers.Position", b =>
+                {
+                    b.HasOne("Kuryo.Core.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_positions_companies_company_id");
+                });
+
             modelBuilder.Entity("Kuryo.Core.Merchants.Merchant", b =>
                 {
                     b.HasOne("Kuryo.Core.Companies.Company", null)
@@ -597,6 +725,23 @@ namespace Kuryo.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_merchants_companies_company_id");
+                });
+
+            modelBuilder.Entity("Kuryo.Core.Offers.Offer", b =>
+                {
+                    b.HasOne("Kuryo.Core.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("CourierId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_offers_users_courier_id");
+
+                    b.HasOne("Kuryo.Core.Orders.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_offers_orders_order_id");
                 });
 
             modelBuilder.Entity("Kuryo.Core.Orders.Order", b =>
