@@ -3,6 +3,8 @@ using Kuryo.Core.Couriers;
 using Kuryo.Core.Geo;
 using Kuryo.Core.Offers;
 using Kuryo.Core.Orders;
+using Kuryo.Api.Features.Live;
+using Kuryo.Infrastructure.Live;
 using Kuryo.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -18,14 +20,16 @@ public sealed record MatchingPass(int Expired, int Offered, int GaveUp);
 /// Safe to run on several instances at once: orders and couriers are claimed with <c>SKIP LOCKED</c>, and the
 /// database allows one pending offer per order and per courier.
 /// </summary>
-public sealed partial class Matcher(IServiceScopeFactory scopes, TimeProvider clock, IOptions<MatchingOptions> options, ILogger<Matcher> logger)
+public sealed partial class Matcher(IServiceScopeFactory scopes, LivePublisher publisher, TimeProvider clock, IOptions<MatchingOptions> options, ILogger<Matcher> logger)
 {
     public async Task<MatchingPass> RunOnceAsync(CancellationToken ct = default)
     {
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<KuryoDbContext>();
-        var expired = await ExpireAsync(db, ct);
+        var feed = scope.ServiceProvider.GetRequiredService<ChangeFeed>();
+        var expired = await ExpireAsync(db, feed, ct);
         var (offered, gaveUp) = await DispatchAsync(db, ct);
+        await publisher.PublishAsync(db, feed.Drain(), ct);
         if (expired + offered + gaveUp > 0)
         {
             LogPass(logger, expired, offered, gaveUp);
@@ -35,7 +39,7 @@ public sealed partial class Matcher(IServiceScopeFactory scopes, TimeProvider cl
     }
 
     /// <summary>Ends every offer whose time is up, in one statement, and notes it on each order.</summary>
-    private async Task<int> ExpireAsync(KuryoDbContext db, CancellationToken ct)
+    private async Task<int> ExpireAsync(KuryoDbContext db, ChangeFeed feed, CancellationToken ct)
     {
         var now = clock.GetUtcNow();
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
@@ -54,9 +58,12 @@ public sealed partial class Matcher(IServiceScopeFactory scopes, TimeProvider cl
             join o in db.Orders.AsNoTracking() on f.OrderId equals o.Id
             join u in db.Users on f.CourierId equals u.Id
             where ids.Contains(f.Id)
-            select new { Order = o, u.DisplayName }).ToListAsync(ct);
+            select new { Order = o, f.CourierId, u.DisplayName }).ToListAsync(ct);
         foreach (var row in rows)
         {
+            // Changed by a statement, not through the change tracker, so the feed is told by hand.
+            feed.OfferChanged(new CourierKey(row.Order.CompanyId, row.CourierId));
+            feed.OrderChanged(row.Order.Id);
             db.OrderEvents.Add(OrderEvent.Record(row.Order, OrderEventKind.OfferExpired, null, now, $"{row.DisplayName} did not answer"));
         }
 

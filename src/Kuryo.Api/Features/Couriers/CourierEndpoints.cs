@@ -67,14 +67,14 @@ internal static class CourierEndpoints
         var courier = await FindAsync(db, companyId, userId, ct);
         courier.Update(request.Vehicle, request.Plate);
         await db.SaveChangesAsync(ct);
-        return TypedResults.Ok((await QueryAsync(db, companyId, userId, ct)).Single());
+        return TypedResults.Ok((await QueryAsync(db, companyId, [userId], ct)).Single());
     }
 
     private static async Task<Ok<CourierResponse>> Me(Guid companyId, ClaimsPrincipal user, KuryoDbContext db, CancellationToken ct)
     {
         var membership = await CompanyAccess.RequireAsync(db, companyId, user, Role.Courier, ct);
         await FindAsync(db, companyId, membership.UserId, ct);
-        return TypedResults.Ok((await QueryAsync(db, companyId, membership.UserId, ct)).Single());
+        return TypedResults.Ok((await QueryAsync(db, companyId, [membership.UserId], ct)).Single());
     }
 
     private static async Task<Ok<CourierResponse>> SetStatus(Guid companyId, StatusRequest request, ClaimsPrincipal user, KuryoDbContext db, TimeProvider clock, MatchingSignal signal, CancellationToken ct)
@@ -99,7 +99,7 @@ internal static class CourierEndpoints
             signal.Poke();
         }
 
-        return TypedResults.Ok((await QueryAsync(db, companyId, membership.UserId, ct)).Single());
+        return TypedResults.Ok((await QueryAsync(db, companyId, [membership.UserId], ct)).Single());
     }
 
     public const int MaxPoints = 50;
@@ -152,12 +152,12 @@ internal static class CourierEndpoints
         await db.Couriers.SingleOrDefaultAsync(c => c.CompanyId == companyId && c.UserId == userId, ct)
         ?? throw new DomainException(ErrorCodes.NotFound, "There is no courier with this id.");
 
-    private static async Task<List<CourierResponse>> QueryAsync(KuryoDbContext db, Guid companyId, Guid? userId, CancellationToken ct)
+    internal static async Task<List<CourierResponse>> QueryAsync(KuryoDbContext db, Guid companyId, IReadOnlyCollection<Guid>? userIds, CancellationToken ct)
     {
         var rows = await (
             from c in db.Couriers.AsNoTracking()
             join u in db.Users on c.UserId equals u.Id
-            where c.CompanyId == companyId && (userId == null || c.UserId == userId)
+            where c.CompanyId == companyId && (userIds == null || userIds.Contains(c.UserId))
             orderby u.DisplayName
             select new
             {

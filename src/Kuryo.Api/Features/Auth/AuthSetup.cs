@@ -23,6 +23,20 @@ internal static class AuthSetup
             .Configure<SigningKeyProvider, IOptions<JwtOptions>, TimeProvider>((bearer, keys, jwt, clock) =>
             {
                 bearer.MapInboundClaims = false;
+                // Browsers cannot set headers on a WebSocket, so the live hub also takes the token from the query string.
+                bearer.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = context =>
+                    {
+                        if (context.HttpContext.Request.Path.StartsWithSegments("/hubs")
+                            && context.Request.Query.TryGetValue("access_token", out var token) && !string.IsNullOrEmpty(token))
+                        {
+                            context.Token = token;
+                        }
+
+                        return Task.CompletedTask;
+                    },
+                };
                 bearer.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidIssuer = jwt.Value.Issuer,

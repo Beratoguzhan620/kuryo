@@ -1,3 +1,4 @@
+using Kuryo.Infrastructure.Live;
 using Kuryo.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,7 +12,9 @@ public static class DependencyInjection
     {
         var dataSource = BuildDataSource(connectionString);
         services.AddSingleton(dataSource);
-        services.AddDbContext<KuryoDbContext>(options => ConfigureDbContext(options, dataSource));
+        services.AddScoped<ChangeFeed>();
+        services.AddDbContext<KuryoDbContext>((scope, options) =>
+            ConfigureDbContext(options, dataSource).AddInterceptors(new ChangeFeedInterceptor(scope.GetRequiredService<ChangeFeed>())));
         return services;
     }
 
@@ -29,7 +32,7 @@ public static class DependencyInjection
         await scope.ServiceProvider.GetRequiredService<KuryoDbContext>().Database.MigrateAsync(ct);
     }
 
-    internal static void ConfigureDbContext(DbContextOptionsBuilder options, NpgsqlDataSource dataSource) =>
+    internal static DbContextOptionsBuilder ConfigureDbContext(DbContextOptionsBuilder options, NpgsqlDataSource dataSource) =>
         options
             .UseNpgsql(dataSource, npgsql => npgsql.MigrationsHistoryTable("__ef_migrations_history").UseNetTopologySuite())
             .UseSnakeCaseNamingConvention();

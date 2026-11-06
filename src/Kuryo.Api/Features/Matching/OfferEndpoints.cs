@@ -46,24 +46,30 @@ internal static class OfferEndpoints
     private static async Task<Results<Ok<OfferResponse>, NoContent>> Current(Guid companyId, ClaimsPrincipal user, KuryoDbContext db, TimeProvider clock, CancellationToken ct)
     {
         var membership = await CompanyAccess.RequireAsync(db, companyId, user, Role.Courier, ct);
-        var now = clock.GetUtcNow();
+        var offer = await CurrentAsync(db, companyId, membership.UserId, clock.GetUtcNow(), ct);
+        return offer is null ? TypedResults.NoContent() : TypedResults.Ok(offer);
+    }
+
+    /// <summary>The courier's live offer, or null.</summary>
+    internal static async Task<OfferResponse?> CurrentAsync(KuryoDbContext db, Guid companyId, Guid courierId, DateTimeOffset now, CancellationToken ct)
+    {
         var row = await (
             from f in db.Offers.AsNoTracking()
             join o in db.Orders.AsNoTracking() on f.OrderId equals o.Id
             join m in db.Merchants.AsNoTracking() on o.MerchantId equals m.Id
-            where f.CompanyId == companyId && f.CourierId == membership.UserId && f.Status == OfferStatus.Pending && f.ExpiresAt > now
+            where f.CompanyId == companyId && f.CourierId == courierId && f.Status == OfferStatus.Pending && f.ExpiresAt > now
             select new { Offer = f, Order = o, MerchantName = m.Name }).SingleOrDefaultAsync(ct);
         if (row is null)
         {
-            return TypedResults.NoContent();
+            return null;
         }
 
         var (offer, order) = (row.Offer, row.Order);
-        return TypedResults.Ok(new OfferResponse(
+        return new OfferResponse(
             offer.Id, order.Id, order.Code, row.MerchantName,
             new PlaceRef(order.PickupAddress, order.PickupLocation.Latitude(), order.PickupLocation.Longitude()),
             new PlaceRef(order.DropoffAddress, order.DropoffLocation.Latitude(), order.DropoffLocation.Longitude()),
-            offer.DistanceKm, order.DistanceKm, order.DeliveryFeeMinor / 100m, order.ReadyAt, offer.OfferedAt, offer.ExpiresAt));
+            offer.DistanceKm, order.DistanceKm, order.DeliveryFeeMinor / 100m, order.ReadyAt, offer.OfferedAt, offer.ExpiresAt);
     }
 
     private static async Task<Ok<OrderResponse>> Accept(Guid companyId, Guid offerId, ClaimsPrincipal user, KuryoDbContext db, TimeProvider clock, CancellationToken ct)
@@ -108,13 +114,21 @@ internal static class OfferEndpoints
         await db.Offers.SingleOrDefaultAsync(f => f.Id == offerId && f.CompanyId == companyId && f.CourierId == membership.UserId, ct)
         ?? throw new DomainException(ErrorCodes.NotFound, "There is no offer with this id.");
 
-    /// <summary>Takes back any open offer for an order (assigned by hand, cancelled) so nobody accepts it late.</summary>
-    internal static Task WithdrawForOrderAsync(KuryoDbContext db, Guid orderId, DateTimeOffset now, CancellationToken ct) =>
-        db.Offers.Where(f => f.OrderId == orderId && f.Status == OfferStatus.Pending)
-            .ExecuteUpdateAsync(s => s.SetProperty(f => f.Status, OfferStatus.Withdrawn).SetProperty(f => f.RespondedAt, now), ct);
+    /// <summary>Takes back any open offer for an order (assigned by hand, cancelled) so nobody accepts it late. Saved with the caller's changes.</summary>
+    internal static async Task WithdrawForOrderAsync(KuryoDbContext db, Guid orderId, DateTimeOffset now, CancellationToken ct)
+    {
+        foreach (var offer in await db.Offers.Where(f => f.OrderId == orderId && f.Status == OfferStatus.Pending).ToListAsync(ct))
+        {
+            offer.Withdraw(now);
+        }
+    }
 
     /// <summary>Takes back the open offer a courier has (they went offline or were given another order).</summary>
-    internal static Task WithdrawForCourierAsync(KuryoDbContext db, Guid courierId, DateTimeOffset now, CancellationToken ct) =>
-        db.Offers.Where(f => f.CourierId == courierId && f.Status == OfferStatus.Pending)
-            .ExecuteUpdateAsync(s => s.SetProperty(f => f.Status, OfferStatus.Withdrawn).SetProperty(f => f.RespondedAt, now), ct);
+    internal static async Task WithdrawForCourierAsync(KuryoDbContext db, Guid courierId, DateTimeOffset now, CancellationToken ct)
+    {
+        foreach (var offer in await db.Offers.Where(f => f.CourierId == courierId && f.Status == OfferStatus.Pending).ToListAsync(ct))
+        {
+            offer.Withdraw(now);
+        }
+    }
 }
