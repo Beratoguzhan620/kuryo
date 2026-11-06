@@ -1,0 +1,31 @@
+# Build
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+TestResults/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+*.log
+
+# Secrets and local settings
+.env
+.env.*
+!.env.example
+secrets.json
+*.pfx
+*.pem
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Web client and browser tests
+node_modules/
+web/dist/
+web/tsconfig.tsbuildinfo
+tests/e2e/output/
+tests/e2e/test-results/

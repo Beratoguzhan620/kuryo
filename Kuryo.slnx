@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Kuryo.Core/Kuryo.Core.csproj" />
+    <Project Path="src/Kuryo.Infrastructure/Kuryo.Infrastructure.csproj" />
+    <Project Path="src/Kuryo.Api/Kuryo.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Kuryo.UnitTests/Kuryo.UnitTests.csproj" />
+    <Project Path="tests/Kuryo.IntegrationTests/Kuryo.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

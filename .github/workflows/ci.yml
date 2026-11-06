@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore Kuryo.slnx
+
+      - name: Build
+        run: dotnet build Kuryo.slnx --no-restore --configuration Release
+
+      - name: Unit tests
+        run: dotnet test tests/Kuryo.UnitTests/Kuryo.UnitTests.csproj --no-build --configuration Release --logger "console;verbosity=normal"
+
+      - name: Integration tests (PostgreSQL in Testcontainers)
+        run: dotnet test tests/Kuryo.IntegrationTests/Kuryo.IntegrationTests.csproj --no-build --configuration Release --logger "console;verbosity=normal"
+
+      - name: Check for model changes without a migration
+        run: |
+          dotnet tool install --global dotnet-ef --version 10.0.14
+          dotnet ef migrations has-pending-model-changes --project src/Kuryo.Infrastructure --startup-project src/Kuryo.Api --no-build --configuration Release
