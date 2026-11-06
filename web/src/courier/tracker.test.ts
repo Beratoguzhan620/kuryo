@@ -28,4 +28,14 @@ describe("PointQueue", () => {
     queue.restore(failed);
     expect(queue.take().map((p) => p.at)).toEqual([at(0), at(5)]);
   });
+
+  it("sends where the courier stopped even when it came too soon after the last point", () => {
+    const queue = new PointQueue();
+    queue.add(point(0));
+    queue.take();
+    expect(queue.add({ ...point(2), latitude: 41.3 })).toBe(false);
+    expect(queue.settle()?.latitude).toBe(41.3);
+    expect(queue.take().map((p) => p.latitude)).toEqual([41.3]);
+    expect(queue.settle()).toBeNull();
+  });
 });
