@@ -1,6 +1,7 @@
 using Kuryo.Core.Companies;
 using Kuryo.Core.Couriers;
 using Kuryo.Core.Merchants;
+using Kuryo.Core.Offers;
 using Kuryo.Core.Orders;
 using Kuryo.Core.Users;
 using Kuryo.Core.Zones;
@@ -26,6 +27,10 @@ public sealed class KuryoDbContext(DbContextOptions<KuryoDbContext> options) : D
     public DbSet<Order> Orders => Set<Order>();
 
     public DbSet<OrderEvent> OrderEvents => Set<OrderEvent>();
+
+    public DbSet<Offer> Offers => Set<Offer>();
+
+    public DbSet<Position> Positions => Set<Position>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

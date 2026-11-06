@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Kuryo.Api.Common;
 using Kuryo.Api.Features.Companies;
 using Kuryo.Api.Features.Couriers;
+using Kuryo.Api.Features.Matching;
 using Kuryo.Api.Features.Merchants;
 using Kuryo.Api.Features.Zones;
 using Kuryo.Core;
@@ -91,7 +92,7 @@ internal static class OrderEndpoints
         return TypedResults.Ok(new Page<OrderSummary>(items, total, number, size));
     }
 
-    private static async Task<Created<OrderResponse>> Create(Guid companyId, CreateOrderRequest request, ClaimsPrincipal user, KuryoDbContext db, TimeProvider clock, CancellationToken ct)
+    private static async Task<Created<OrderResponse>> Create(Guid companyId, CreateOrderRequest request, ClaimsPrincipal user, KuryoDbContext db, TimeProvider clock, MatchingSignal signal, CancellationToken ct)
     {
         var membership = await CompanyAccess.RequireAsync(db, companyId, user, Role.Merchant, ct);
         if (!membership.Serves(request.MerchantId))
@@ -114,6 +115,7 @@ internal static class OrderEndpoints
         db.OrderEvents.Add(OrderEvent.Record(order, OrderEventKind.Created, membership.UserId, now, $"{zone.Name}, {order.DistanceKm:0.0} km"));
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
+        signal.Poke();
         return TypedResults.Created($"/api/companies/{companyId}/orders/{order.Id}", await OrderQueries.DetailAsync(db, order.Id, membership, ct));
     }
 
@@ -137,6 +139,9 @@ internal static class OrderEndpoints
         courier.TakeOrder(now);
         var toPickup = courier.Location is null ? 0 : GeoPoint.DistanceKm(courier.Location, order.PickupLocation);
         order.Assign(courier.UserId, courier.SpeedKmh(), toPickup, now);
+        // An offer still out for this order, or one this courier was thinking about, no longer stands.
+        await OfferEndpoints.WithdrawForOrderAsync(db, orderId, now, ct);
+        await OfferEndpoints.WithdrawForCourierAsync(db, courier.UserId, now, ct);
         var name = await db.Users.Where(u => u.Id == courier.UserId).Select(u => u.DisplayName).SingleAsync(ct);
         db.OrderEvents.Add(OrderEvent.Record(order, OrderEventKind.Assigned, membership.UserId, now, $"{name}, by a dispatcher"));
         await db.SaveChangesAsync(ct);
@@ -144,7 +149,7 @@ internal static class OrderEndpoints
         return TypedResults.Ok(await OrderQueries.DetailAsync(db, orderId, membership, ct));
     }
 
-    private static async Task<Ok<OrderResponse>> Release(Guid companyId, Guid orderId, ReasonRequest request, ClaimsPrincipal user, KuryoDbContext db, TimeProvider clock, CancellationToken ct)
+    private static async Task<Ok<OrderResponse>> Release(Guid companyId, Guid orderId, ReasonRequest request, ClaimsPrincipal user, KuryoDbContext db, TimeProvider clock, MatchingSignal signal, CancellationToken ct)
     {
         var membership = await CompanyAccess.RequireMemberAsync(db, companyId, user, ct);
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
@@ -167,10 +172,11 @@ internal static class OrderEndpoints
         db.OrderEvents.Add(OrderEvent.Record(order, OrderEventKind.Released, membership.UserId, now, Text.Clean(request.Reason, 3, 300, "A reason")));
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
+        signal.Poke();
         return TypedResults.Ok(await OrderQueries.DetailAsync(db, orderId, membership, ct));
     }
 
-    private static async Task<Ok<OrderResponse>> SearchAgain(Guid companyId, Guid orderId, ClaimsPrincipal user, KuryoDbContext db, TimeProvider clock, CancellationToken ct)
+    private static async Task<Ok<OrderResponse>> SearchAgain(Guid companyId, Guid orderId, ClaimsPrincipal user, KuryoDbContext db, TimeProvider clock, MatchingSignal signal, CancellationToken ct)
     {
         var membership = await CompanyAccess.RequireAsync(db, companyId, user, Role.Dispatcher, ct);
         var order = await FindAsync(db, companyId, orderId, membership, ct);
@@ -178,6 +184,7 @@ internal static class OrderEndpoints
         order.SearchAgain(now);
         db.OrderEvents.Add(OrderEvent.Record(order, OrderEventKind.SearchAgain, membership.UserId, now));
         await db.SaveChangesAsync(ct);
+        signal.Poke();
         return TypedResults.Ok(await OrderQueries.DetailAsync(db, orderId, membership, ct));
     }
 
@@ -237,6 +244,14 @@ internal static class OrderEndpoints
     {
         var membership = await CompanyAccess.RequireAsync(db, companyId, user, Role.Merchant, ct);
         var order = await FindAsync(db, companyId, orderId, membership, ct);
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        if (order.CourierId is { } carrier)
+        {
+            await LockCourierAsync(db, companyId, carrier, ct);
+        }
+
+        await LockOrderAsync(db, companyId, orderId, ct);
+        await db.Entry(order).ReloadAsync(ct);
         if (!membership.IsDispatcher && order.Status == OrderStatus.PickedUp)
         {
             throw new DomainException(ErrorCodes.InvalidState, "The courier already has the order. Call the office to cancel it.");
@@ -249,8 +264,10 @@ internal static class OrderEndpoints
             (await CourierEndpoints.FindAsync(db, companyId, id, ct)).FinishOrder(now);
         }
 
+        await OfferEndpoints.WithdrawForOrderAsync(db, orderId, now, ct);
         db.OrderEvents.Add(OrderEvent.Record(order, OrderEventKind.Cancelled, membership.UserId, now, order.CancelReason));
         await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
         return TypedResults.Ok(await OrderQueries.DetailAsync(db, orderId, membership, ct));
     }
 

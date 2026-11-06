@@ -27,6 +27,9 @@ public sealed class Courier
 {
     public const int PlateMaxLength = 16;
 
+    /// <summary>A location older than this says little about where the courier is now, so they get no offers until the next one.</summary>
+    public static readonly TimeSpan FreshFor = TimeSpan.FromMinutes(2);
+
     private Courier()
     {
     }
@@ -103,6 +106,8 @@ public sealed class Courier
             SetStatus(CourierStatus.Available, now);
         }
     }
+
+    public bool KnownNear(DateTimeOffset now) => Location is not null && LocationAt is { } at && now - at <= FreshFor;
 
     public void MoveTo(Point location, DateTimeOffset at)
     {

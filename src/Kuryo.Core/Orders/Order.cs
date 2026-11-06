@@ -76,6 +76,9 @@ public sealed class Order
     public Guid? CourierId { get; private set; }
 
     /// <summary>How many couriers this order has been offered to; a dispatcher steps in after the company's limit.</summary>
+    /// <summary>When the current search began: on creation, and again after a hand-back or a dispatcher's retry.</summary>
+    public DateTimeOffset SearchStartedAt { get; private set; }
+
     public int OffersMade { get; private set; }
 
     public DateTimeOffset? AssignedAt { get; private set; }
@@ -152,6 +155,7 @@ public sealed class Order
             DeliveryFeeMinor = zone.DeliveryFeeMinor,
             DistanceKm = Math.Round(GeoPoint.DistanceKm(merchant.Location, dropoff), 2),
             Status = OrderStatus.Searching,
+            SearchStartedAt = now,
             ReadyAt = now.AddMinutes(merchant.PrepMinutes),
             TrackingToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(18)).Replace('+', '-').Replace('/', '_'),
             DeliveryCode = RandomNumberGenerator.GetInt32(0, 10_000).ToString("D4"),
@@ -180,6 +184,13 @@ public sealed class Order
         UpdatedAt = now;
     }
 
+    /// <summary>
+    /// A search ends after the company's number of offers, or once it has run as long as that many offers would take
+    /// (when no courier is near enough to be offered it at all). Then a dispatcher steps in.
+    /// </summary>
+    public bool SearchIsOver(int maxOffers, int offerSeconds, DateTimeOffset now) =>
+        Status == OrderStatus.Searching && (OffersMade >= maxOffers || now - SearchStartedAt >= TimeSpan.FromSeconds((double)maxOffers * offerSeconds));
+
     /// <summary>Nobody took it: a dispatcher has to.</summary>
     public void GiveUp(DateTimeOffset now)
     {
@@ -193,6 +204,7 @@ public sealed class Order
     {
         Require("search again", OrderStatus.Unassigned);
         Status = OrderStatus.Searching;
+        SearchStartedAt = now;
         OffersMade = 0;
         UpdatedAt = now;
     }
@@ -206,6 +218,7 @@ public sealed class Order
         AssignedAt = null;
         EstimatedDeliveryAt = null;
         Status = OrderStatus.Searching;
+        SearchStartedAt = now;
         OffersMade = 0;
         UpdatedAt = now;
         return courier;

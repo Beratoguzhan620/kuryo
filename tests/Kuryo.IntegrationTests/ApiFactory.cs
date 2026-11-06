@@ -28,12 +28,17 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("Database:MigrateOnStartup", "true");
         builder.UseSetting("Jwt:SigningKey", SigningKey);
         builder.UseSetting("Auth:AttemptsPerMinute", "100000");
+        // Tests run the matcher themselves, one pass at a time.
+        builder.UseSetting("Matching:Enabled", "false");
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<TimeProvider>();
             services.AddSingleton<TimeProvider>(Clock);
         });
     }
+
+    public Task<Kuryo.Api.Features.Matching.MatchingPass> MatchAsync() =>
+        Services.GetRequiredService<Kuryo.Api.Features.Matching.Matcher>().RunOnceAsync();
 
     public async Task<T?> ScalarAsync<T>(string sql, params object[] parameters)
     {

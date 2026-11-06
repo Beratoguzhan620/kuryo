@@ -1,5 +1,6 @@
 using Kuryo.Core.Companies;
 using Kuryo.Core.Geo;
+using Kuryo.Core.Offers;
 using Kuryo.Core.Orders;
 using Kuryo.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -43,6 +44,12 @@ internal static class OrderQueries
                 : new CourierRef(courierId, c.DisplayName, c.Courier.Vehicle, c.Courier.Plate, c.Courier.Location?.Latitude(), c.Courier.Location?.Longitude(), c.Courier.LocationAt);
         }
 
+        var pending = await (
+            from f in db.Offers.AsNoTracking()
+            join u in db.Users on f.CourierId equals u.Id
+            where f.OrderId == orderId && f.Status == OfferStatus.Pending
+            select new OfferRef(f.CourierId, u.DisplayName, f.DistanceKm, f.ExpiresAt)).SingleOrDefaultAsync(ct);
+
         var history = await (
             from e in db.OrderEvents.AsNoTracking()
             where e.OrderId == orderId
@@ -70,6 +77,7 @@ internal static class OrderQueries
             order.ReadyAt,
             courier,
             order.OffersMade,
+            pending,
             order.AssignedAt,
             order.PickedUpAt,
             order.DeliveredAt,
