@@ -1,0 +1,11 @@
+{
+  "name": "Kuryo",
+  "short_name": "Kuryo",
+  "description": "Go online, take offers, deliver with the customer's code.",
+  "start_url": "/courier",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F7F6F3",
+  "theme_color": "#1E5A3C",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

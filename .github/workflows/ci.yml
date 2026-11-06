@@ -34,3 +34,73 @@ jobs:
         run: |
           dotnet tool install --global dotnet-ef --version 10.0.14
           dotnet ef migrations has-pending-model-changes --project src/Kuryo.Infrastructure --startup-project src/Kuryo.Api --no-build --configuration Release
+
+  web:
+    name: Web app
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Type check
+        run: npm run check
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  e2e:
+    name: An office, a merchant, two couriers and a customer, in browsers
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Start the stack
+        env:
+          AUTH_ATTEMPTS_PER_MINUTE: '1000'
+        run: docker compose up --build --detach --wait --wait-timeout 300
+
+      - name: Install Playwright
+        working-directory: tests/e2e
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Run the walkthrough
+        working-directory: tests/e2e
+        run: node kuryo.mjs
+
+      - name: Show logs
+        if: failure()
+        run: docker compose logs --no-color api web
+
+      - name: Keep the last screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-output
+          path: tests/e2e/output/
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down --volumes

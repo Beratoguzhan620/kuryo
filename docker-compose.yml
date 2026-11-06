@@ -1,0 +1,73 @@
+# One command: docker compose up --build
+# Office: http://localhost:8080 · courier app: http://localhost:8080/courier · API reference: http://localhost:8080/scalar
+# Two API instances share their live hubs through Redis and their matching through PostgreSQL row locks.
+name: kuryo
+
+services:
+  db:
+    image: postgis/postgis:17-3.5-alpine
+    environment:
+      POSTGRES_DB: kuryo
+      POSTGRES_USER: kuryo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kuryo-local}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kuryo -d kuryo"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: .
+    restart: on-failure
+    deploy:
+      replicas: 2
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Kuryo: "Host=db;Database=kuryo;Username=kuryo;Password=${POSTGRES_PASSWORD:-kuryo-local}"
+      ConnectionStrings__Redis: "redis:6379"
+      Database__MigrateOnStartup: "true"
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:-local-signing-key-change-me-in-the-env-file-0123456789}
+      Auth__AttemptsPerMinute: ${AUTH_ATTEMPTS_PER_MINUTE:-10}
+      Tracking__RequestsPerMinute: ${TRACKING_REQUESTS_PER_MINUTE:-120}
+      # nginx is in front: per-address limits must see the browser's address, not nginx's.
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q Healthy <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    restart: on-failure
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  db-data:
