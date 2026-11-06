@@ -15,14 +15,31 @@ export const MAX_QUEUE = 50;
 export class PointQueue {
   private points: Point[] = [];
   private lastKept = 0;
+  /** The newest point skipped for being too soon; it is kept at the next batch unless a newer one was kept meanwhile. */
+  private skipped: Point | null = null;
 
   add(point: Point): boolean {
     const at = new Date(point.at).getTime();
-    if (at - this.lastKept < MIN_GAP_MS) return false;
+    if (at - this.lastKept < MIN_GAP_MS) {
+      this.skipped = point;
+      return false;
+    }
     this.lastKept = at;
+    this.skipped = null;
     this.points.push(point);
     if (this.points.length > MAX_QUEUE) this.points.splice(0, this.points.length - MAX_QUEUE);
     return true;
+  }
+
+  /** Before a batch goes out: a courier who moved and then stopped still reports where they stopped. */
+  settle(): Point | null {
+    const point = this.skipped;
+    if (!point) return null;
+    this.skipped = null;
+    this.lastKept = new Date(point.at).getTime();
+    this.points.push(point);
+    if (this.points.length > MAX_QUEUE) this.points.splice(0, this.points.length - MAX_QUEUE);
+    return point;
   }
 
   take(): Point[] {
@@ -79,7 +96,8 @@ export function startTracker(companyId: string, onState: (state: TrackerState, l
         at: new Date(position.timestamp || Date.now()).toISOString(),
       };
       const first = !last;
-      if (queue.add(point)) last = point;
+      queue.add(point);
+      last = point;
       onState("sharing", last);
       if (first) void flush();
     },
@@ -87,6 +105,7 @@ export function startTracker(companyId: string, onState: (state: TrackerState, l
     { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 },
   );
   const timer = setInterval(() => {
+    queue.settle();
     if (last && queue.size === 0 && Date.now() - new Date(last.at).getTime() >= HEARTBEAT_MS) {
       const again = { ...last, at: new Date().toISOString() };
       if (queue.add(again)) last = again;
