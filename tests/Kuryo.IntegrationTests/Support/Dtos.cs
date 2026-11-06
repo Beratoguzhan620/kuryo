@@ -38,6 +38,16 @@ public sealed record HistoryDto(long Id, string Kind, string? ActorName, DateTim
 
 public sealed record OrderDto(
     Guid Id, int Number, string Code, string Status, MerchantRefDto Merchant, PlaceDto Pickup, string CustomerName, string CustomerPhone, PlaceDto Dropoff,
-    string DropoffNotes, string Items, string ZoneName, decimal DeliveryFee, double DistanceKm, DateTimeOffset ReadyAt, CourierRefDto? Courier, int OffersMade,
+    string DropoffNotes, string Items, string ZoneName, decimal DeliveryFee, double DistanceKm, DateTimeOffset ReadyAt, CourierRefDto? Courier, int OffersMade, OfferRefDto? PendingOffer,
     DateTimeOffset? AssignedAt, DateTimeOffset? PickedUpAt, DateTimeOffset? DeliveredAt, DateTimeOffset? EstimatedDeliveryAt, string CancelReason,
     string? TrackingToken, string? DeliveryCode, int CodeAttempts, List<HistoryDto> History, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+
+public sealed record OfferRefDto(Guid CourierId, string CourierName, double ToPickupKm, DateTimeOffset ExpiresAt);
+
+public sealed record OfferDto(
+    Guid Id, Guid OrderId, string OrderCode, string MerchantName, PlaceDto Pickup, PlaceDto Dropoff, double ToPickupKm, double TripKm, decimal DeliveryFee,
+    DateTimeOffset ReadyAt, DateTimeOffset OfferedAt, DateTimeOffset ExpiresAt);
+
+public sealed record PingDto(int Stored, DateTimeOffset? LocationAt);
+
+public sealed record TrailPointDto(double Latitude, double Longitude, DateTimeOffset At);

@@ -17,6 +17,7 @@ internal static class ErrorStatuses
         [ErrorCodes.RateLimited] = StatusCodes.Status429TooManyRequests,
         [ErrorCodes.NotYourOrder] = StatusCodes.Status403Forbidden,
         [ErrorCodes.CourierUnavailable] = StatusCodes.Status409Conflict,
+        [ErrorCodes.OfferGone] = StatusCodes.Status409Conflict,
     };
 
     public static int StatusFor(string code) =>

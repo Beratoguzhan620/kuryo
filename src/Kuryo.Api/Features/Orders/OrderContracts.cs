@@ -42,6 +42,9 @@ public sealed record MerchantRef(Guid Id, string Name, string Phone);
 
 public sealed record CourierRef(Guid Id, string Name, Vehicle Vehicle, string Plate, double? Latitude, double? Longitude, DateTimeOffset? LocationAt);
 
+/// <summary>The offer out for the order right now: who is deciding and until when.</summary>
+public sealed record OfferRef(Guid CourierId, string CourierName, double ToPickupKm, DateTimeOffset ExpiresAt);
+
 public sealed record OrderEventResponse(long Id, OrderEventKind Kind, string? ActorName, DateTimeOffset At, string Detail);
 
 /// <summary>
@@ -66,6 +69,7 @@ public sealed record OrderResponse(
     DateTimeOffset ReadyAt,
     CourierRef? Courier,
     int OffersMade,
+    OfferRef? PendingOffer,
     DateTimeOffset? AssignedAt,
     DateTimeOffset? PickedUpAt,
     DateTimeOffset? DeliveredAt,

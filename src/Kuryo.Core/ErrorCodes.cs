@@ -16,4 +16,5 @@ public static class ErrorCodes
     public const string NotYourOrder = "not_your_order";
     public const string WrongCode = "wrong_code";
     public const string CodeLocked = "code_locked";
+    public const string OfferGone = "offer_gone";
 }

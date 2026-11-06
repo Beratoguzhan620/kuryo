@@ -6,6 +6,7 @@ using Kuryo.Api.Common;
 using Kuryo.Api.Features.Auth;
 using Kuryo.Api.Features.Companies;
 using Kuryo.Api.Features.Couriers;
+using Kuryo.Api.Features.Matching;
 using Kuryo.Api.Features.Merchants;
 using Kuryo.Api.Features.Orders;
 using Kuryo.Api.Features.Zones;
@@ -35,6 +36,14 @@ if (string.IsNullOrWhiteSpace(connectionString))
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddKuryoPersistence(connectionString);
 builder.Services.AddKuryoAuth(builder.Configuration);
+
+builder.Services.Configure<MatchingOptions>(builder.Configuration.GetSection(MatchingOptions.Section));
+builder.Services.AddSingleton<MatchingSignal>();
+builder.Services.AddSingleton<Matcher>();
+if (builder.Configuration.GetValue($"{MatchingOptions.Section}:Enabled", true))
+{
+    builder.Services.AddHostedService<MatchingWorker>();
+}
 
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -107,6 +116,7 @@ app.MapMerchantEndpoints();
 app.MapZoneEndpoints();
 app.MapCourierEndpoints();
 app.MapOrderEndpoints();
+app.MapOfferEndpoints();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
