@@ -6,6 +6,7 @@ using Kuryo.Api.Common;
 using Kuryo.Api.Features.Auth;
 using Kuryo.Api.Features.Companies;
 using Kuryo.Api.Features.Couriers;
+using Kuryo.Api.Features.Live;
 using Kuryo.Api.Features.Matching;
 using Kuryo.Api.Features.Merchants;
 using Kuryo.Api.Features.Orders;
@@ -37,6 +38,17 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddKuryoPersistence(connectionString);
 builder.Services.AddKuryoAuth(builder.Configuration);
 
+// Live updates. With several API instances, a Redis connection string lets them share the hubs' groups.
+var signalR = builder.Services.AddSignalR(options => options.EnableDetailedErrors = builder.Environment.IsDevelopment())
+    .AddJsonProtocol(options => options.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+var redis = builder.Configuration.GetConnectionString("Redis");
+if (!string.IsNullOrWhiteSpace(redis))
+{
+    signalR.AddStackExchangeRedis(redis, options => options.Configuration.ChannelPrefix = StackExchange.Redis.RedisChannel.Literal("kuryo"));
+}
+
+builder.Services.AddSingleton<LivePublisher>();
+
 builder.Services.Configure<MatchingOptions>(builder.Configuration.GetSection(MatchingOptions.Section));
 builder.Services.AddSingleton<MatchingSignal>();
 builder.Services.AddSingleton<Matcher>();
@@ -60,6 +72,11 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy(AuthEndpoints.RateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = perMinute, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    // The public tracking page polls and reconnects: generous for a customer, slow for scanning tokens.
+    var trackPerMinute = builder.Configuration.GetValue("Tracking:RequestsPerMinute", 120);
+    options.AddPolicy(TrackEndpoints.RateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = trackPerMinute, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
     options.OnRejected = async (context, _) =>
     {
         context.HttpContext.Response.Headers.RetryAfter = "60";
@@ -92,6 +109,7 @@ app.UseStatusCodePages();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
+app.UseMiddleware<LiveFeedMiddleware>();
 
 app.MapOpenApi();
 app.MapScalarApiReference(options => options
@@ -117,6 +135,9 @@ app.MapZoneEndpoints();
 app.MapCourierEndpoints();
 app.MapOrderEndpoints();
 app.MapOfferEndpoints();
+app.MapTrackEndpoints();
+app.MapHub<LiveHub>(LiveHub.Path);
+app.MapHub<TrackHub>(TrackHub.Path).RequireRateLimiting(TrackEndpoints.RateLimit);
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
