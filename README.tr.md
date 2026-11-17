@@ -16,6 +16,8 @@
 
 ## Deneyin
 
+**Canlı demo:** [kuryo-demo.onrender.com](https://kuryo-demo.onrender.com). Samsun'da kendi kendine çalışan bir kurye şirketi: işletmeler dakikada bir kadar sipariş gönderiyor, beş sanal kurye teklifleri alıp işletmeye gidiyor, paketi alıp teslim ediyor. Giriş sayfasındaki düğmelerle dispeçer olarak canlı haritayı izleyebilir, işletme olarak kendi siparişini gönderebilir ya da kurye olarak bir sipariş alabilirsin. Ücretsiz bir sunucuda, veritabanı Neon'da çalışıyor: bir süre kimse açmadıysa ilk açılış bir dakika kadar sürebilir.
+
 ```bash
 docker compose up --build
 ```
