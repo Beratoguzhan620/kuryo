@@ -16,6 +16,8 @@ Courier dispatch for companies that deliver for restaurants, bakeries and pharma
 
 ## Try it
 
+**Live demo:** [kuryo-demo.onrender.com](https://kuryo-demo.onrender.com). A courier company in Samsun runs itself: merchants send orders every minute or so, and five simulated couriers take offers, ride to the shop, pick up and deliver. Sign in from the buttons on the sign-in page as the dispatcher to watch the live map, as a merchant to send your own order, or as a courier to take one. It runs on a free server with the database on Neon: after a quiet spell the first visit can take about a minute.
+
 ```bash
 docker compose up --build
 ```
