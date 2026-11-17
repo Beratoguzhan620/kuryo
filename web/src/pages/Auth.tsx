@@ -1,5 +1,5 @@
 import { Navigation, Radar, Timer } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError } from "../api";
 import { Brand } from "../components/Shell";
 import { useApp } from "../context";
@@ -33,17 +33,27 @@ export function SignIn({ next }: { next?: string }) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [demo, setDemo] = useState<{ role: string; email: string; password: string }[]>([]);
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  // The public demo publishes three sign-ins; anywhere else the list is empty and nothing is shown.
+  useEffect(() => {
+    api.demo().then(setDemo, () => setDemo([]));
+  }, []);
+
+  async function signIn(address: string, secret: string) {
     setBusy(true);
     setError(null);
     try {
-      done(await api.login(email, password));
+      done(await api.login(address, secret));
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);
     }
+  }
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    void signIn(email, password);
   }
 
   return (
@@ -56,6 +66,16 @@ export function SignIn({ next }: { next?: string }) {
           <label className="field">Password<input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
           {error && <p className="form-error" role="alert">{error}</p>}
           <button className="button primary wide" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
+          {demo.length > 0 && (
+            <div className="demo-sign-in">
+              <p className="small muted center-text">This is a public demo: a courier company in Samsun whose couriers drive themselves. Orders come in every minute or so.</p>
+              {demo.map((account) => (
+                <button key={account.role} type="button" className="button wide" disabled={busy} onClick={() => void signIn(account.email, account.password)}>
+                  {account.role === "Dispatcher" ? "Watch the live map as the dispatcher" : account.role === "Merchant" ? "Send orders as a merchant" : "Try the courier app"}
+                </button>
+              ))}
+            </div>
+          )}
           <p className="small muted center-text">New here? <a {...linkProps(`/register${next ? `?next=${encodeURIComponent(next)}` : ""}`)}>Create an account</a></p>
         </form>
       </main>

@@ -6,6 +6,7 @@ using Kuryo.Api.Common;
 using Kuryo.Api.Features.Auth;
 using Kuryo.Api.Features.Companies;
 using Kuryo.Api.Features.Couriers;
+using Kuryo.Api.Features.Demo;
 using Kuryo.Api.Features.Live;
 using Kuryo.Api.Features.Matching;
 using Kuryo.Api.Features.Merchants;
@@ -27,7 +28,7 @@ builder.Services.AddSerilog((services, logger) => logger
     .ReadFrom.Services(services)
     .Enrich.FromLogContext());
 
-var connectionString = builder.Configuration.GetConnectionString("Kuryo");
+var connectionString = ConnectionStrings.FromUrl(builder.Configuration.GetConnectionString("Kuryo"));
 if (string.IsNullOrWhiteSpace(connectionString))
 {
     throw new InvalidOperationException(
@@ -57,6 +58,15 @@ if (builder.Configuration.GetValue($"{MatchingOptions.Section}:Enabled", true))
     builder.Services.AddHostedService<MatchingWorker>();
 }
 
+// The public demo's company runs itself; off unless Demo:Enabled.
+builder.Services.Configure<DemoOptions>(builder.Configuration.GetSection(DemoOptions.Section));
+var demo = builder.Configuration.GetSection(DemoOptions.Section).Get<DemoOptions>() ?? new DemoOptions();
+if (demo.Enabled)
+{
+    builder.Services.AddHttpClient(DemoWorker.HttpClientName, client => client.BaseAddress = new Uri(demo.BaseUrl));
+    builder.Services.AddHostedService<DemoWorker>();
+}
+
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.Encoder = JavaScriptEncoder.Create(UnicodeRanges.All);
@@ -69,9 +79,12 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     // Sign-up and sign-in per address: plenty for a person, slow for guessing.
     var perMinute = builder.Configuration.GetValue("Auth:AttemptsPerMinute", 10);
-    options.AddPolicy(AuthEndpoints.RateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
-        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-        _ => new FixedWindowRateLimiterOptions { PermitLimit = perMinute, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    // The demo's own couriers sign in from inside the container and are not held to it.
+    options.AddPolicy(AuthEndpoints.RateLimit, context => demo.Enabled && context.Connection.RemoteIpAddress is { } address && System.Net.IPAddress.IsLoopback(address)
+        ? RateLimitPartition.GetNoLimiter("demo")
+        : RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = perMinute, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
     // The public tracking page polls and reconnects: generous for a customer, slow for scanning tokens.
     var trackPerMinute = builder.Configuration.GetValue("Tracking:RequestsPerMinute", 120);
     options.AddPolicy(TrackEndpoints.RateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
@@ -102,7 +115,22 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+// One container for the public demo: the built web app is copied into wwwroot and served from here, with the same
+// headers nginx sets in Compose. Without a wwwroot (tests, Compose), nothing changes.
+var indexPage = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "index.html");
+var serveWeb = File.Exists(indexPage);
 app.UseMiddleware<CorrelationIdMiddleware>();
+if (serveWeb)
+{
+    app.UseMiddleware<WebHeadersMiddleware>();
+    app.UseDefaultFiles();
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        OnPrepareResponse = context => context.Context.Response.Headers.CacheControl =
+            context.Context.Request.Path.StartsWithSegments("/assets") ? "public, max-age=31536000, immutable" : "no-cache",
+    });
+}
+
 app.UseSerilogRequestLogging();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
@@ -126,7 +154,12 @@ app.MapScalarApiReference(options => options
     .DisableMcp()
     .DisableTelemetry());
 
-app.MapGet("/", () => Results.Redirect("/scalar")).ExcludeFromDescription();
+if (!serveWeb)
+{
+    app.MapGet("/", () => Results.Redirect("/scalar")).ExcludeFromDescription();
+}
+
+app.MapDemoEndpoints();
 app.MapAuthEndpoints();
 app.MapCompanyEndpoints();
 app.MapMemberEndpoints();
@@ -141,6 +174,22 @@ app.MapHub<TrackHub>(TrackHub.Path).RequireRateLimiting(TrackEndpoints.RateLimit
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
+if (serveWeb)
+{
+    // Every other path is a page of the web app; unknown API paths stay 404s.
+    app.MapFallback(async context =>
+    {
+        if (WebHeadersMiddleware.IsApi(context.Request.Path))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        context.Response.ContentType = "text/html; charset=utf-8";
+        context.Response.Headers.CacheControl = "no-cache";
+        await context.Response.SendFileAsync(indexPage, context.RequestAborted);
+    });
+}
 
 if (app.Configuration.GetValue("Database:MigrateOnStartup", false))
 {

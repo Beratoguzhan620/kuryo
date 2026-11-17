@@ -200,6 +200,7 @@ fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 .auth-intro li svg { flex: none; margin-top: 2px; color: #fff; }
 .auth-main { display: grid; place-items: center; padding: 32px 16px; }
 .auth-card { width: 100%; max-width: 400px; display: grid; gap: 14px; padding: 28px; }
+.demo-sign-in { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
 .auth-card h1 { font-size: 22px; }
 .center-text { text-align: center; }
 
